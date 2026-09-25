@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bot status</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; background: #fafafa; color: #222; margin: 0; padding: 24px 16px; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .top { font-size: 12px; color: #777; margin-bottom: 2px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 10px; }
+  .markets { margin: 0 0 14px; font-size: 14px; }
+  .markets button { border: 0; background: none; padding: 0; margin-right: 14px; font-size: 14px; color: #666; cursor: pointer; font-family: inherit; }
+  .markets button.on { color: #000; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .goalrow { display: flex; gap: 18px; align-items: center; }
+  .goalmain { flex: 1; min-width: 0; }
+  .total { font-size: 34px; font-weight: 700; }
+  .goal { font-size: 13px; color: #555; margin: 2px 0 8px; }
+  .track { height: 8px; background: #e2e2e2; border-radius: 4px; overflow: hidden; margin-bottom: 14px; }
+  .fill { height: 100%; background: #333; width: 0%; }
+  .stats { display: flex; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; margin-bottom: 6px; }
+  .stats div { flex: 1; padding: 8px 4px; }
+  .stats .k { font-size: 11px; color: #777; }
+  .stats .v { font-size: 17px; font-weight: 600; margin-top: 2px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 18px 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { font-size: 11px; color: #777; text-align: left; font-weight: 600; padding: 6px 8px 6px 0; border-bottom: 1px solid #ccc; }
+  td { padding: 7px 8px 7px 0; border-bottom: 1px solid #eee; }
+  td.n, th.n { text-align: right; }
+  .pos { color: #0a7a2f; } .neg { color: #c00; }
+  ul.trades { list-style: none; margin: 0; padding: 0; font-family: Consolas, monospace; font-size: 12.5px; }
+  ul.trades li { padding: 3px 0; border-bottom: 1px dotted #e2e2e2; }
+  .palrow { font-size: 12px; color: #777; margin: -4px 0 8px; }
+  .palrow button { border: 0; background: none; padding: 0 3px; font-size: 12px; color: #666; cursor: pointer; font-family: inherit; }
+  .palrow button.on { color: #000; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .allocrow { display: flex; gap: 18px; align-items: center; }
+  .legend { flex: 1; min-width: 0; font-size: 13px; }
+  .legend .li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dotted #e2e2e2; }
+  .sw { width: 11px; height: 11px; flex: none; }
+  .legend .sym { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend .pct { color: #777; width: 48px; text-align: right; }
+  .legend .amt { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
+  .vbar { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 0; }
+  .vbar .sym { width: 92px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vbar .trk { flex: 1; height: 12px; background: #eee; }
+  .vbar .fl { height: 100%; background: #444; }
+  .vbar .amt { width: 110px; text-align: right; color: #555; font-variant-numeric: tabular-nums; }
+  .pnlrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 0; }
+  .pnlrow .sym { width: 92px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pnlrow .trk { flex: 1; height: 14px; background: #f0f0f0; position: relative; }
+  .pnlrow .mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #bbb; }
+  .pnlrow .fl { position: absolute; top: 2px; bottom: 2px; }
+  .pnlrow .val { width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+  .foot { margin-top: 16px; font-size: 11.5px; color: #999; }
+  @media (max-width: 560px) { .goalrow, .allocrow { flex-direction: column; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">paper-trading bot &middot; <span id="upd">connecting&hellip;</span></div>
+  <h1 id="label">loading</h1>
+  <div class="markets">
+    <button data-m="nse">nse</button><button data-m="crypto">crypto</button><button data-m="meme">meme</button>
+  </div>
+  <div class="goalrow">
+    <div class="goalmain">
+      <div class="total" id="total">&mdash;</div>
+      <div class="goal" id="goal"></div>
+      <div class="track"><div class="fill" id="fill"></div></div>
+    </div>
+    <canvas id="goalring"></canvas>
+  </div>
+  <div class="stats">
+    <div><div class="k">cash</div><div class="v" id="cash">&mdash;</div></div>
+    <div><div class="k">invested</div><div class="v" id="inv">&mdash;</div></div>
+    <div><div class="k">trades</div><div class="v" id="trades">&mdash;</div></div>
+  </div>
+  <h2>allocation — where the money sits</h2>
+  <div class="palrow">palette <b id="palname"></b>: <span id="palbtns"></span></div>
+  <div class="allocrow">
+    <canvas id="allocpie"></canvas>
+    <div class="legend" id="legend"></div>
+  </div>
+  <h2>holdings by value</h2>
+  <div id="vbars"></div>
+  <h2>performance by position</h2>
+  <div id="pnlbars"></div>
+  <h2>positions</h2>
+  <table>
+    <thead><tr><th>symbol</th><th class="n">qty</th><th class="n">avg</th><th class="n">last</th><th class="n">value</th><th class="n">p&amp;l</th></tr></thead>
+    <tbody id="pos"><tr><td colspan="6">loading</td></tr></tbody>
+  </table>
+  <h2>recent trades</h2>
+  <ul class="trades" id="tradelist"><li>loading</li></ul>
+  <div class="foot">refreshes every 5s from the bot's portfolio file. run <code>python dashboard_server.py</code> for live numbers; opened directly it shows sample data.</div>
+</div>
+<script>
+let market = 'meme';
+const PALETTES = [
+  {name: 'forest', colors: ['#2f5d50','#3e6b8f','#8a6d3b','#4a7c59','#7a4a3a','#54627b','#96803f','#5d4a6b','#3f7370','#6b6b6b','#243f38','#2e4f66','#6b562e','#38603f','#5e3a2e','#414c5e','#746832','#483a53','#315c59','#545454']},
+  {name: 'ocean',  colors: ['#274c63','#3e6b8f','#5b8fa8','#1f3a4d','#4d7a6b','#7fb3c8','#31556b','#6b8e7b','#8aa8b5','#9db9c4','#1b3547','#2c4e66','#43697f','#17303d','#3a5f54','#5d8a9f','#243f50','#506e5e','#68838f','#7d95a1']},
+  {name: 'earth',  colors: ['#6b5b3e','#8a6d3b','#5d4a2f','#a8905a','#7a6a4a','#4f5d3a','#7a4a3a','#96803f','#8c7a5b','#b09a6a','#52462f','#6b562e','#483a24','#867044','#5e5239','#3d4a2d','#5e3a2e','#746832','#6d5f46','#8a7952']},
+  {name: 'berry',  colors: ['#6e3b4d','#8a4a5e','#5d4a6b','#934a3b','#7a5a7a','#4a5d7a','#a86a5a','#7d3f5c','#6b6b8a','#9a7a8a','#562e3c','#6d3a49','#493a54','#743a2e','#604860','#3a4a60','#85544a','#633049','#54546c','#7a606c']},
+  {name: 'mono',   colors: ['#1f1f1f','#8a8a8a','#3d3d3d','#a8a8a8','#565656','#c2c2c2','#2a2a2a','#949494','#484848','#b2b2b2','#333333','#9e9e9e','#5e5e5e','#bcbcbc','#242424','#7e7e7e','#6e6e6e','#c9c9c9','#141414','#a0a0a0']},
+  {name: 'sunset', colors: ['#8a5a3b','#a86a3f','#7a4a3a','#b08a4f','#934a3b','#6e5a3a','#c09a5e','#5d4a2f','#8c6a4a','#a84f35','#6d4630','#855232','#5f3a2e','#8a6d3f','#743a2e','#57462e','#96784a','#4a3a25','#6e5238','#863f2a']},
+  {name: 'harbor', colors: ['#2b3a4a','#3e5a73','#5b7a93','#22303c','#6b8a9e','#8aa0b0','#31485c','#4a6a82','#7490a6','#9db0bd','#212e39','#31485e','#476178','#1b2630','#546e80','#6d8496','#273a4a','#3b556c','#5c7488','#7f95a6']},
+  {name: 'dusk',   colors: ['#4a4258','#5d5470','#6e6484','#3a3448','#7a6e90','#57506b','#655c78','#48465c','#71688a','#5c5878','#6b5560','#7d6a74','#54454e','#8a7580','#463c4c','#5e4a56','#74616e','#413845','#695664','#83707c']}
+];
+let palIdx = 0;
+try { palIdx = parseInt(localStorage.getItem('botpal') || '0', 10) || 0; if (palIdx < 0 || palIdx >= PALETTES.length) palIdx = 0; } catch(e){}
+function setPal(i){ palIdx = i; try { localStorage.setItem('botpal', String(i)); } catch(e){} paintPalBtns(); load(); }
+function paintPalBtns(){
+  document.getElementById('palname').textContent = PALETTES[palIdx].name;
+  document.getElementById('palbtns').innerHTML = PALETTES.map((p, i) =>
+    `<button data-p="${i}" class="${i === palIdx ? 'on' : ''}">${i + 1}</button>`
+  ).join(' ');
+  document.querySelectorAll('#palbtns button').forEach(b => b.onclick = () => setPal(parseInt(b.dataset.p, 10)));
+}
+const SAMPLE = {
+  nse:    {ccy:'Rs.', total:501.67, target:1000, cash:251.67, invested:250.0, trades_total:31, goal_pct:50.2, label:'nse stocks (ITC, YESBANK, IDEA)', positions:[{symbol:'YESBANK.NS',qty:11.111,avg:22.5,last:22.5,value:250.0,pnl_pct:0}], recent_trades:[['SELL','IDEA.NS',0.207,14.26],['BUY','YESBANK.NS',11.111,22.5]], updated:'sample'},
+  crypto: {ccy:'USDT', total:501.71, target:1000, cash:12.7, invested:489.01, trades_total:58, goal_pct:50.2, label:'crypto (BTC, ETH, SOL)', positions:[{symbol:'BTCUSDT',qty:0.003,avg:84518.01,last:84390.92,value:253.17,pnl_pct:-0.2},{symbol:'ETHUSDT',qty:0.088,avg:2716.11,last:2713.47,value:238.78,pnl_pct:-0.1},{symbol:'SOLUSDT',qty:0.185,avg:120.66,last:120.41,value:22.28,pnl_pct:-0.2}], recent_trades:[['BUY','SOLUSDT',0.185,120.66],['SELL','BTCUSDT',0.00003,84493.61]], updated:'sample'},
+  meme:   {ccy:'Rs.', total:499.15, target:1000, cash:0, invested:499.15, trades_total:24, goal_pct:49.9, label:'memecoins (DOGE, SHIB, PEPE)', positions:[{symbol:'DOGEUSDT',qty:13.232,avg:9.45,last:9.44,value:124.9,pnl_pct:-0.1},{symbol:'SHIBUSDT',qty:220284.077,avg:0.000567,last:0.000566,value:124.79,pnl_pct:-0.2},{symbol:'PEPEUSDT',qty:574780.97,avg:0.000435,last:0.000434,value:249.46,pnl_pct:-0.2}], recent_trades:[['BUY','SHIBUSDT',222924.469,0.000561],['BUY','DOGEUSDT',13.346,9.366]], updated:'sample'}
+};
+function num(n){ return (n > 0 && n < 1) ? n.toFixed(6) : n.toFixed(n < 100 ? 3 : 2); }
+function donut(id, segs, label){
+  const c = document.getElementById(id), S = 140, dpr = window.devicePixelRatio || 1;
+  c.width = S * dpr; c.height = S * dpr;
+  c.style.width = S + 'px'; c.style.height = S + 'px';
+  const x = c.getContext('2d');
+  x.scale(dpr, dpr); x.clearRect(0, 0, S, S);
+  const tot = segs.reduce((s, g) => s + g.v, 0) || 1;
+  let a = -Math.PI / 2;
+  segs.forEach(g => {
+    const a2 = a + (g.v / tot) * Math.PI * 2;
+    x.beginPath(); x.arc(S/2, S/2, 50, a, a2);
+    x.strokeStyle = g.c; x.lineWidth = 22; x.stroke();
+    a = a2;
+  });
+  x.fillStyle = '#222'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = '700 21px -apple-system, "Segoe UI", Arial, sans-serif';
+  x.fillText(label, S/2, S/2);
+}
+function render(d){
+  const PAL = PALETTES[palIdx].colors;
+  document.getElementById('upd').textContent = 'updated ' + d.updated;
+  document.getElementById('label').textContent = d.label;
+  document.getElementById('total').textContent = d.ccy + ' ' + d.total.toFixed(2);
+  document.getElementById('goal').textContent = 'goal ' + d.ccy + ' ' + d.target.toFixed(0) + ' — ' + d.goal_pct.toFixed(1) + '% there';
+  document.getElementById('fill').style.width = Math.min(100, d.goal_pct) + '%';
+  document.getElementById('cash').textContent = d.ccy + ' ' + d.cash.toFixed(2);
+  document.getElementById('inv').textContent = d.ccy + ' ' + d.invested.toFixed(2);
+  document.getElementById('trades').textContent = d.trades_total;
+
+  // goal donut (fixed green/gray — it means progress, not allocation)
+  const pct = Math.max(0, Math.min(100, d.goal_pct));
+  donut('goalring', [{v: pct, c: '#1a7f37'}, {v: 100 - pct, c: '#e5e5e5'}], pct.toFixed(0) + '%');
+
+  // allocation pie: positions in palette order + idle cash always gray
+  const slices = d.positions.map((p, i) => ({sym: p.symbol, v: p.value, c: PAL[i % PAL.length]}));
+  if (d.cash > 0.005) slices.push({sym: 'CASH (idle)', v: d.cash, c: '#dcdcdc'});
+  const tot = slices.reduce((s, g) => s + g.v, 0) || 1;
+  donut('allocpie', slices.length ? slices : [{v: 1, c: '#e5e5e5'}], d.positions.length ? d.positions.length + '' : '—');
+  document.getElementById('legend').innerHTML = slices.map(g =>
+    `<div class="li"><span class="sw" style="background:${g.c}"></span><span class="sym">${g.sym}</span><span class="amt">${d.ccy} ${g.v.toFixed(2)}</span><span class="pct">${(g.v / tot * 100).toFixed(1)}%</span></div>`
+  ).join('') || '<div class="li">empty</div>';
+
+  // value bars (share of total, cash included)
+  document.getElementById('vbars').innerHTML = slices.map(g =>
+    `<div class="vbar"><span class="sym">${g.sym}</span><span class="trk"><span class="fl" style="display:block;width:${(g.v / tot * 100).toFixed(1)}%;background:${g.c === '#dcdcdc' ? '#bbb' : g.c}"></span></span><span class="amt">${d.ccy} ${g.v.toFixed(2)}</span></div>`
+  ).join('') || '<div class="vbar">flat — all cash</div>';
+
+  // pnl bars (diverging from center, scaled to biggest mover)
+  const maxAbs = Math.max(1, ...d.positions.map(p => Math.abs(p.pnl_pct)));
+  document.getElementById('pnlbars').innerHTML = d.positions.length ? d.positions.map(p => {
+    const w = (Math.abs(p.pnl_pct) / maxAbs * 50).toFixed(1);
+    const left = p.pnl_pct < 0 ? (50 - w) : 50;
+    const col = p.pnl_pct >= 0 ? '#1a7f37' : '#c00';
+    return `<div class="pnlrow"><span class="sym">${p.symbol}</span><span class="trk"><span class="mid"></span><span class="fl" style="left:${left}%;width:${w}%;background:${col}"></span></span><span class="val ${p.pnl_pct >= 0 ? 'pos' : 'neg'}">${p.pnl_pct >= 0 ? '+' : ''}${p.pnl_pct.toFixed(1)}%</span></div>`;
+  }).join('') : '<div class="pnlrow">no positions</div>';
+
+  // table + trades (unchanged)
+  document.getElementById('pos').innerHTML = d.positions.length ? d.positions.map(x =>
+    `<tr><td>${x.symbol}</td><td class="n">${num(x.qty)}</td><td class="n">${num(x.avg)}</td><td class="n">${num(x.last)}</td><td class="n">${d.ccy} ${x.value.toFixed(2)}</td><td class="n ${x.pnl_pct >= 0 ? 'pos' : 'neg'}">${x.pnl_pct >= 0 ? '+' : ''}${x.pnl_pct.toFixed(1)}%</td></tr>`
+  ).join('') : '<tr><td colspan="6">flat — all cash</td></tr>';
+  document.getElementById('tradelist').innerHTML = d.recent_trades.length ? d.recent_trades.slice(0, 8).map(t =>
+    `<li><span class="${t[0] === 'BUY' ? 'pos' : 'neg'}">${t[0]}</span> ${t[2]} ${t[1]} @ ${t[3]}</li>`
+  ).join('') : '<li>no trades yet</li>';
+}
+async function load(){
+  try { const r = await fetch('/api/status?market=' + market); if (!r.ok) throw 0; render(await r.json()); }
+  catch(e){ render(SAMPLE[market]); }
+}
+document.querySelectorAll('.markets button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.markets button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); market = b.dataset.m; load();
+});
+document.querySelector('[data-m="meme"]').classList.add('on');
+paintPalBtns();
+load(); setInterval(load, 5000);
+</script>
+</body>
+</html>

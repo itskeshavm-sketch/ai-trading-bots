@@ -1,0 +1,12 @@
+# never commit secrets or live bot state
+.env
+portfolio.json
+portfolio_crypto.json
+portfolio_meme.json
+last_prices.json
+last_prices_crypto.json
+last_prices_meme.json
+__pycache__/
+*.pyc
+.venv/
+venv/

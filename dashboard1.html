@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot Status — Neon Trader</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0e17; color: #e6edf3; font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #8b949e; font-size: 13px; margin-bottom: 16px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tabs button { background: #161b26; color: #e6edf3; border: 1px solid #30363d; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .tabs button.active { background: #00e676; color: #04140a; border-color: #00e676; font-weight: 700; }
+  .hero { background: linear-gradient(135deg, #111827, #0d2b1d); border: 1px solid #1f6f43; border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+  .hero .total { font-size: 40px; font-weight: 800; color: #00e676; }
+  .hero .goal { color: #8b949e; font-size: 13px; margin-top: 4px; }
+  .bar { height: 12px; background: #21262d; border-radius: 6px; margin-top: 12px; overflow: hidden; }
+  .bar > div { height: 100%; background: linear-gradient(90deg, #00e676, #00b0ff); width: 0%; transition: width .5s; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .card { background: #161b26; border: 1px solid #30363d; border-radius: 12px; padding: 14px; }
+  .card .k { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+  .card .v { font-size: 20px; font-weight: 700; margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; background: #161b26; border-radius: 12px; overflow: hidden; font-size: 14px; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #21262d; }
+  th { color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .up { color: #00e676; } .down { color: #ff5252; }
+  .trades { margin-top: 16px; background: #161b26; border: 1px solid #30363d; border-radius: 12px; padding: 14px; font-size: 13px; }
+  .trades div { padding: 4px 0; border-bottom: 1px dashed #21262d; font-family: Consolas, monospace; }
+  .live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #00e676; margin-right: 6px; animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .note { margin-top: 14px; font-size: 12px; color: #8b949e; }
+  @media (max-width: 700px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="live"></span>Neon Trader <span style="color:#8b949e;font-weight:400;font-size:14px">— paper-trading bot status</span></h1>
+  <div class="sub" id="label">loading…</div>
+  <div class="tabs">
+    <button data-m="nse">NSE Stocks</button>
+    <button data-m="crypto">Crypto</button>
+    <button data-m="meme">Memecoins</button>
+  </div>
+  <div class="hero">
+    <div class="total" id="total">—</div>
+    <div class="goal" id="goal">Goal: —</div>
+    <div class="bar"><div id="barfill"></div></div>
+  </div>
+  <div class="grid">
+    <div class="card"><div class="k">Cash</div><div class="v" id="cash">—</div></div>
+    <div class="card"><div class="k">Invested</div><div class="v" id="inv">—</div></div>
+    <div class="card"><div class="k">P&amp;L vs start</div><div class="v" id="pnl">—</div></div>
+    <div class="card"><div class="k">Trades</div><div class="v" id="trades">—</div></div>
+  </div>
+  <table>
+    <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>Last</th><th>Value</th><th>P&amp;L</th></tr></thead>
+    <tbody id="pos"><tr><td colspan="6">loading…</td></tr></tbody>
+  </table>
+  <div class="trades"><b>Recent trades</b><div id="tradelist">loading…</div></div>
+  <div class="note">Auto-refreshes every 5s from the bot's portfolio file · <span id="upd"></span> · Serve via <code>python dashboard_server.py</code> for live data (double-click shows sample data).</div>
+</div>
+<script>
+let market = 'meme';
+const SAMPLE = {
+  nse:    {ccy:'Rs.', total:501.67, target:1000, cash:251.67, invested:250.0, pnl_vs_start:1.67, trades_total:31, goal_pct:50.2, label:'NSE Stocks (ITC, YESBANK, IDEA)', positions:[{symbol:'YESBANK.NS',qty:11.111,avg:22.5,last:22.5,value:250.0,pnl_pct:0}], recent_trades:[['SELL','IDEA.NS',0.207,14.26],['BUY','YESBANK.NS',11.111,22.5]], updated:'sample'},
+  crypto: {ccy:'USDT', total:501.71, target:1000, cash:12.7, invested:489.01, pnl_vs_start:1.71, trades_total:58, goal_pct:50.2, label:'Crypto (BTC, ETH, SOL)', positions:[{symbol:'BTCUSDT',qty:0.003,avg:84518.01,last:84390.92,value:253.17,pnl_pct:-0.2},{symbol:'ETHUSDT',qty:0.088,avg:2716.11,last:2713.47,value:238.78,pnl_pct:-0.1},{symbol:'SOLUSDT',qty:0.185,avg:120.66,last:120.41,value:22.28,pnl_pct:-0.2}], recent_trades:[['BUY','SOLUSDT',0.185,120.66],['SELL','BTCUSDT',0.00003,84493.61]], updated:'sample'},
+  meme:   {ccy:'Rs.', total:499.15, target:1000, cash:0, invested:499.15, pnl_vs_start:-0.85, trades_total:24, goal_pct:49.9, label:'Memecoins (DOGE, SHIB, PEPE)', positions:[{symbol:'DOGEUSDT',qty:13.232,avg:9.45,last:9.44,value:124.9,pnl_pct:-0.1},{symbol:'SHIBUSDT',qty:220284.077,avg:0.000567,last:0.000566,value:124.79,pnl_pct:-0.2},{symbol:'PEPEUSDT',qty:574780.97,avg:0.000435,last:0.000434,value:249.46,pnl_pct:-0.2}], recent_trades:[['BUY','SHIBUSDT',222924.469,0.000561],['BUY','DOGEUSDT',13.346,9.366]], updated:'sample'}
+};
+function fmt(n, ccy){ return (n < 1 && n > 0 ? n.toFixed(6) : n.toFixed(2)); }
+function render(d){
+  document.getElementById('label').textContent = d.label;
+  document.getElementById('total').textContent = d.ccy + d.total.toFixed(2);
+  document.getElementById('goal').textContent = 'Goal: ' + d.ccy + d.target.toFixed(0) + '  ·  ' + d.goal_pct.toFixed(1) + '% there';
+  document.getElementById('barfill').style.width = Math.min(100, d.goal_pct) + '%';
+  document.getElementById('cash').textContent = d.ccy + d.cash.toFixed(2);
+  document.getElementById('inv').textContent = d.ccy + d.invested.toFixed(2);
+  const p = document.getElementById('pnl');
+  p.textContent = (d.pnl_vs_start >= 0 ? '+' : '') + d.ccy + d.pnl_vs_start.toFixed(2);
+  p.className = 'v ' + (d.pnl_vs_start >= 0 ? 'up' : 'down');
+  document.getElementById('trades').textContent = d.trades_total;
+  document.getElementById('pos').innerHTML = d.positions.length ? d.positions.map(x =>
+    `<tr><td><b>${x.symbol}</b></td><td>${x.qty < 1 && x.qty > 0 ? x.qty.toFixed(6) : x.qty.toFixed(3)}</td><td>${fmt(x.avg)}</td><td>${fmt(x.last)}</td><td>${d.ccy}${x.value.toFixed(2)}</td><td class="${x.pnl_pct >= 0 ? 'up' : 'down'}">${x.pnl_pct >= 0 ? '+' : ''}${x.pnl_pct.toFixed(1)}%</td></tr>`
+  ).join('') : '<tr><td colspan="6">flat — all cash, no positions</td></tr>';
+  document.getElementById('tradelist').innerHTML = d.recent_trades.length ? d.recent_trades.map(t =>
+    `<div><span class="${t[0]==='BUY' ? 'up' : 'down'}">${t[0]}</span> ${t[2]} ${t[1]} @ ${t[3]}</div>`
+  ).join('') : 'no trades yet';
+  document.getElementById('upd').textContent = 'updated ' + d.updated;
+}
+async function load(){
+  try {
+    const r = await fetch('/api/status?market=' + market);
+    if (!r.ok) throw 0;
+    render(await r.json());
+  } catch(e){ render(SAMPLE[market]); }
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); market = b.dataset.m; load();
+});
+document.querySelector('[data-m="meme"]').classList.add('active');
+load(); setInterval(load, 5000);
+</script>
+</body>
+</html>

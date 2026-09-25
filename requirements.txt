@@ -1,0 +1,10 @@
+# NSE paper trader - Rs.500 simulation
+# Run: pip install -r requirements.txt
+# Then: python main.py (mock mode, no key needed)
+# Then with AI: set OPENCODE_API_KEY in .env and python main.py --ai
+
+yfinance>=0.2.40
+pandas>=2.0
+requests>=2.31
+python-dotenv>=1.0
+openai>=1.30
