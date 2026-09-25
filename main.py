@@ -68,7 +68,12 @@ def save_gate(mkt, prices, steps):
     with open(mkt["gate"], "w") as fh:
         json.dump({"prices": prices, "steps": steps}, fh)
 
-def one_step(mkt, market, pf, use_ai, interval, period, step_no):
+def live_cap(market):
+    if market == "crypto":
+        return config.LIVE_MAX_ORDER_USDT
+    return config.LIVE_MAX_ORDER_RUPEES
+
+def one_step(mkt, market, pf, use_ai, interval, period, step_no, broker=None):
     ccy = mkt["ccy"]
     snapshots, prices = [], {}
     try:
@@ -138,20 +143,47 @@ def one_step(mkt, market, pf, use_ai, interval, period, step_no):
         out = rule_decide(snapshots, pf, prices)
         print("RULE:", out)
 
-    print("[STEP 5/5] Executing trades ...")
+    mode = "LIVE" if broker is not None else "PAPER"
+    print(f"[STEP 5/5] Executing trades [{mode}] ...")
     for d in out["decisions"]:
         sym, act = d["symbol"], d["action"].upper()
         price = prices.get(sym)
         if not price:
             continue
         if act == "BUY":
-            cap = total * config.MAX_POSITION_PCT
+            cap = min(total * config.MAX_POSITION_PCT, live_cap(market))
             amt = float(d.get("amount", d.get("rupees", 100)))
+            if broker is not None:
+                from brokers import LiveRefused
+                try:
+                    fill = broker.market_order(sym, "BUY", min(amt, cap) / price, price)
+                except LiveRefused as e:
+                    print(f"LIVE SKIP BUY {sym}: {e}")
+                    continue
+                fp = fill["price"] or price
+                q = pf.buy(sym, fp, fill["qty"] * fp)
+                if q: print(f"LIVE BUY {sym} {q:.3f} @ {fp:.2f} (id {fill['order_id']}) - {d.get('reason','')}")
+                continue
             q = pf.buy(sym, price, min(amt, cap))
             if q: print(f"BUY {sym} {q:.3f} @ {price:.2f} - {d.get('reason','')}")
         elif act == "SELL":
             amt = float(d.get("amount", d.get("rupees", 0)))
             qty = amt / price if amt > 0 else None
+            if broker is not None:
+                from brokers import LiveRefused
+                pos = pf.positions.get(sym, {"qty": 0})
+                lq = pos["qty"] if qty is None else min(qty, pos["qty"])
+                if lq <= 0:
+                    continue
+                try:
+                    fill = broker.market_order(sym, "SELL", lq, price)
+                except LiveRefused as e:
+                    print(f"LIVE SKIP SELL {sym}: {e}")
+                    continue
+                fp = fill["price"] or price
+                q = pf.sell(sym, fp, fill["qty"])
+                if q: print(f"LIVE SELL {sym} {q:.3f} @ {fp:.2f} (id {fill['order_id']}) - {d.get('reason','')}")
+                continue
             q = pf.sell(sym, price, qty)
             if q: print(f"SELL {sym} {q:.3f} @ {price:.2f} - {d.get('reason','')}")
         else:
@@ -172,6 +204,7 @@ def main():
     ap.add_argument("--sleep", type=int, default=60, help="seconds between steps in loop")
     ap.add_argument("--reset", action="store_true", help="reset paper account")
     ap.add_argument("--market", choices=["nse", "crypto", "meme"], default="nse")
+    ap.add_argument("--live", action="store_true", help="SEND REAL ORDERS via broker (needs keys + LIVE_TRADING=I_UNDERSTAND in .env)")
     args = ap.parse_args()
 
     mkt = mkt_cfg(args.market)
@@ -180,13 +213,24 @@ def main():
         save_pf(mkt, pf)
         save_gate(mkt, {}, 0)
 
+    broker = None
+    if args.live:
+        from brokers import get_broker, LiveRefused
+        print("*** LIVE MODE: real orders, real money. Ledger mirrors fills. ***")
+        try:
+            broker = get_broker(args.market)
+            print(f"LIVE broker ready for {args.market}. Per-order cap: {live_cap(args.market)}")
+        except LiveRefused as e:
+            print(f"LIVE REFUSED, not starting: {e}")
+            return
+
     if not args.loop:
-        one_step(mkt, args.market, pf, args.ai, config.INTERVAL, config.PERIOD, 1)
+        one_step(mkt, args.market, pf, args.ai, config.INTERVAL, config.PERIOD, 1, broker)
         return
 
     for i in range(1, args.max_steps + 1):
         try:
-            total = one_step(mkt, args.market, pf, args.ai, mkt["loop_interval"], config.LOOP_PERIOD, i)
+            total = one_step(mkt, args.market, pf, args.ai, mkt["loop_interval"], config.LOOP_PERIOD, i, broker)
         except KeyboardInterrupt:
             print("\nStopped by you (Ctrl+C). Portfolio saved.")
             break

@@ -29,3 +29,7 @@ TAKE_PROFIT_PCT = 0.10
 # change-gate: only wake AI when a price actually moved
 PRICE_MOVE_PCT = 0.05  # % move vs last check that counts as "changed"
 FORCE_AI_EVERY = 10  # force AI review every Nth step even if flat (RSI/stops drift)
+
+# live trading rails (only used with --live; paper is default)
+LIVE_MAX_ORDER_RUPEES = 500.0  # max notional per live NSE/meme order
+LIVE_MAX_ORDER_USDT = 10.0  # max notional per live crypto order
