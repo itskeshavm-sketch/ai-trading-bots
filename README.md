@@ -64,6 +64,12 @@ dashboard and live order caps all scale automatically:
 ```
 python main.py --ai --loop --sleep 0 --max-steps 1000000 --market meme --cash 5000 --target 10000
 ```
+The goal doesn't have to be 2× — any custom goal works, e.g. start 10000,
+reach 15000:
+```
+python main.py --ai --loop --sleep 0 --max-steps 1000000 --market nse --cash 10000 --target 15000
+```
+Omit `--target` and it defaults to double your `--cash`.
 Amounts apply on a fresh start and are saved in the state file, so restarts
 keep them. To change amounts on a running account, add `--reset` (wipes it
 back to the new starting cash — old trades are gone, so be sure).
