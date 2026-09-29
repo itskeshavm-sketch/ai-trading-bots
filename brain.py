@@ -10,28 +10,31 @@ def get_client():
         return None
     return OpenAI(base_url=config.ZEN_BASE_URL, api_key=key)
 
-PROMPT_NSE = """GOAL: Grow a real Rs.500 NSE trading account to Rs.1000 as fast as possible.
+PROMPT_NSE = """GOAL: Grow a real {CCY}{CASH} NSE trading account to {CCY}{TARGET} as fast as possible.
 You are trading REAL money on the NSE. Every BUY/SELL you output executes as a live market order with real rupees. Losses are real and permanent. There is no reset, no practice mode.
 You are an aggressive but disciplined trader. Prefer high-momentum setups, buy breakouts/oversold bounces, concentrate when confident.
 Given live snapshots + your real portfolio, output ONLY JSON: {"decisions":[{"symbol":..., "action":"BUY|SELL|HOLD","rupees":0,"reason":"..."}]}
 Rules: max 50% per position, RSI>75 avoid chase, RSI<35 + price>SMA20 = strong buy, sell fast on -4% stop or +8% take or RSI>75. Fractional shares allowed. Keep reason <15 words.
 """
 
-PROMPT_CRYPTO = """GOAL: Grow a real 500 USDT crypto trading account to 1000 USDT as fast as possible.
+PROMPT_CRYPTO = """GOAL: Grow a real {CASH} USDT crypto trading account to {TARGET} USDT as fast as possible.
 You are trading REAL money on Binance spot. Every BUY/SELL you output executes as a live market order with real USDT. Losses are real and permanent. There is no reset, no practice mode. Market runs 24/7, volatility is high.
 You are an aggressive but disciplined trader. Prefer high-momentum setups, buy breakouts/oversold bounces, concentrate when confident.
 Given live snapshots + your real portfolio, output ONLY JSON: {"decisions":[{"symbol":..., "action":"BUY|SELL|HOLD","amount":0,"reason":"..."}]}
 Rules: max 50% per position, RSI>75 avoid chase, RSI<35 + price>SMA20 = strong buy, sell fast on -4% stop or +8% take or RSI>75. Fractional amounts allowed. Amounts are in USDT. Keep reason <15 words.
 """
 
-def get_prompt(market):
+def get_prompt(market, ccy="Rs.", cash=500, target=1000):
     if market == "crypto":
-        return PROMPT_CRYPTO
-    if market == "meme":
-        return PROMPT_MEME
-    return PROMPT_NSE
+        p = PROMPT_CRYPTO
+    elif market == "meme":
+        p = PROMPT_MEME
+    else:
+        p = PROMPT_NSE
+    amt = lambda v: f"{v:g}"
+    return p.replace("{CCY}", ccy).replace("{CASH}", amt(cash)).replace("{TARGET}", amt(target))
 
-PROMPT_MEME = """GOAL: Grow a real Rs.500 memecoin trading account to Rs.1000 as fast as possible.
+PROMPT_MEME = """GOAL: Grow a real {CCY}{CASH} memecoin trading account to {CCY}{TARGET} as fast as possible.
 You are trading REAL money on crypto spot (DOGE, SHIB, PEPE). Every BUY/SELL you output executes as a live market order with real rupees. Losses are real and permanent. There is no reset, no practice mode. Market runs 24/7, memecoins are extremely volatile and can crash 30% in an hour.
 You are an aggressive but disciplined trader. Prefer high-momentum setups, buy breakouts/oversold bounces, concentrate when confident.
 Given live snapshots (prices in rupees) + your real portfolio, output ONLY JSON: {"decisions":[{"symbol":..., "action":"BUY|SELL|HOLD","amount":0,"reason":"..."}]}
@@ -40,11 +43,12 @@ Rules: max 50% per position, RSI>75 avoid chase, RSI<35 + price>SMA20 = strong b
 
 PROMPT = PROMPT_NSE  # default
 
-def ai_decide(client, snapshots, portfolio_text, verbose=True, market="nse"):
+def ai_decide(client, snapshots, portfolio_text, verbose=True, market="nse",
+              ccy="Rs.", cash_start=500, target=1000):
     # space-bunny-free works via Zen API with $0 balance.
     # Reasoning = your Max dropdown -> extra_body={"reasoning":{"effort":"max"}}
     # Needs large max_tokens because thinking consumes tokens.
-    prompt = get_prompt(market)
+    prompt = get_prompt(market, ccy, cash_start, target)
     print(f"[STEP 3/5] Sending to {config.ZEN_MODEL} reasoning={config.ZEN_REASONING_EFFORT} ...")
     last_err = None
     for attempt in range(AI_RETRIES):
@@ -88,6 +92,7 @@ def ai_decide(client, snapshots, portfolio_text, verbose=True, market="nse"):
 
 def rule_decide(snapshots, portfolio, prices):
     """Fallback, no key needed. Simple RSI+SMA rule."""
+    stake = max(150, getattr(portfolio, "cash_start", 500) * 0.3)
     decisions = []
     for s in snapshots:
         price = s["price"]
@@ -95,7 +100,7 @@ def rule_decide(snapshots, portfolio, prices):
         sma20 = s.get("sma20") or price
         pos = portfolio.positions.get(s["symbol"])
         if rsi < 35 and price > sma20 and not pos:
-            decisions.append({"symbol": s["symbol"], "action": "BUY", "rupees": 150, "reason": "oversold bounce"})
+            decisions.append({"symbol": s["symbol"], "action": "BUY", "rupees": stake, "reason": "oversold bounce"})
         elif pos:
             avg = pos["avg_price"]
             if price < avg * 0.95 or price > avg * 1.10 or rsi > 70:

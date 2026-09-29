@@ -41,14 +41,20 @@ def mkt_cfg(market):
         "fetcher": "nse",
     }
 
-def load_pf(mkt, reset=False):
+def load_pf(mkt, reset, cash, target):
+    # Fresh start (or --reset): use the requested amounts. Otherwise the
+    # running account in the state file wins (--cash/--target are ignored).
     if reset or not os.path.exists(mkt["state"]):
-        return PaperPortfolio(mkt["cash"])
+        pf = PaperPortfolio(cash)
+        pf.target = target
+        return pf
     try:
         with open(mkt["state"]) as f:
             return PaperPortfolio.from_dict(json.load(f))
     except Exception:
-        return PaperPortfolio(mkt["cash"])
+        pf = PaperPortfolio(cash)
+        pf.target = target
+        return pf
 
 def save_pf(mkt, pf):
     with open(mkt["state"], "w") as f:
@@ -68,16 +74,16 @@ def save_gate(mkt, prices, steps):
     with open(mkt["gate"], "w") as fh:
         json.dump({"prices": prices, "steps": steps}, fh)
 
-def live_cap(market):
+def live_cap(market, cash_start):
     if market == "crypto":
-        return config.LIVE_MAX_ORDER_USDT
-    return config.LIVE_MAX_ORDER_RUPEES
+        return max(config.LIVE_MAX_ORDER_USDT, cash_start * 0.5)
+    return max(config.LIVE_MAX_ORDER_RUPEES, cash_start * 0.5)
 
 def one_step(mkt, market, pf, use_ai, interval, period, step_no, broker=None):
     ccy = mkt["ccy"]
     snapshots, prices = [], {}
     try:
-        print(f"\n===== STEP {step_no} [{market}] GOAL: {ccy}500 -> {ccy}1000 =====")
+        print(f"\n===== STEP {step_no} [{market}] GOAL: {ccy}{pf.cash_start:g} -> {ccy}{pf.target:g} =====")
         print(f"[STEP 1/5] Fetching {mkt['symbols']} ({interval}/{period}) ...")
         for sym in mkt["symbols"]:
             try:
@@ -105,7 +111,7 @@ def one_step(mkt, market, pf, use_ai, interval, period, step_no, broker=None):
 
     total = pf.value(prices)
     # AI sees goal + current state, but NOT the auto-stop rule
-    pf_text = pf.summary(prices).replace("Rs.", ccy) + f"\nTotal {ccy}{total:.2f} / Goal {ccy}1000"
+    pf_text = pf.summary(prices).replace("Rs.", ccy) + f"\nTotal {ccy}{total:.2f} / Goal {ccy}{pf.target:g}"
     print(f"[STEP 2/5] Portfolio:\n{pf_text}")
 
     # CHANGE-GATE: skip AI call if nothing moved
@@ -122,7 +128,7 @@ def one_step(mkt, market, pf, use_ai, interval, period, step_no, broker=None):
     if use_ai and not moved and n % config.FORCE_AI_EVERY != 0 and last:
         print(f"[GATE] No price moved >= {config.PRICE_MOVE_PCT}% (step {n}). AI skipped, no Zen spent.")
         print(f"--- TOTAL: {ccy}{total:.2f} (Cash {ccy}{pf.cash:.2f}) ---")
-        pct = min(100, total / mkt["target"] * 100)
+        pct = min(100, total / pf.target * 100)
         print(f"goal [{'#' * int(pct // 5)}{'-' * (20 - int(pct // 5))}] {pct:.1f}%  trades={len(pf.trades)}")
         save_pf(mkt, pf)
         return total
@@ -137,7 +143,8 @@ def one_step(mkt, market, pf, use_ai, interval, period, step_no, broker=None):
             print("No OPENCODE_API_KEY in .env.")
             return None
         print(f"[STEP 3/5] Asking {config.ZEN_MODEL} (reasoning={config.ZEN_REASONING_EFFORT}) ...")
-        out = ai_decide(client, snapshots, pf_text, verbose=True, market=market)
+        out = ai_decide(client, snapshots, pf_text, verbose=True, market=market,
+                        ccy=ccy, cash_start=pf.cash_start, target=pf.target)
         print(f"[STEP 4/5] AI decisions: {out['decisions']}")
     else:
         out = rule_decide(snapshots, pf, prices)
@@ -151,7 +158,7 @@ def one_step(mkt, market, pf, use_ai, interval, period, step_no, broker=None):
         if not price:
             continue
         if act == "BUY":
-            cap = min(total * config.MAX_POSITION_PCT, live_cap(market))
+            cap = min(total * config.MAX_POSITION_PCT, live_cap(market, pf.cash_start))
             amt = float(d.get("amount", d.get("rupees", 100)))
             if broker is not None:
                 from brokers import LiveRefused
@@ -191,7 +198,7 @@ def one_step(mkt, market, pf, use_ai, interval, period, step_no, broker=None):
 
     total = pf.value(prices)
     print(f"--- TOTAL: {ccy}{total:.2f} (Cash {ccy}{pf.cash:.2f}) ---")
-    pct = min(100, total / mkt["target"] * 100)
+    pct = min(100, total / pf.target * 100)
     print(f"goal [{'#' * int(pct // 5)}{'-' * (20 - int(pct // 5))}] {pct:.1f}%  trades={len(pf.trades)}")
     save_pf(mkt, pf)
     return total
@@ -205,13 +212,25 @@ def main():
     ap.add_argument("--reset", action="store_true", help="reset paper account")
     ap.add_argument("--market", choices=["nse", "crypto", "meme"], default="nse")
     ap.add_argument("--live", action="store_true", help="SEND REAL ORDERS via broker (needs keys + LIVE_TRADING=I_UNDERSTAND in .env)")
+    ap.add_argument("--cash", type=float, default=None, help="starting amount, e.g. --cash 5000 (fresh start only)")
+    ap.add_argument("--target", type=float, default=None, help="goal amount, e.g. --target 10000 (default: 2x cash)")
     args = ap.parse_args()
 
     mkt = mkt_cfg(args.market)
-    pf = load_pf(mkt, reset=args.reset)
+    cash = args.cash if args.cash else mkt["cash"]
+    target = args.target if args.target else (mkt["target"] if not args.cash else cash * 2)
+    if cash <= 0 or target <= cash:
+        print(f"Need --cash > 0 and --target > cash (got {cash:g} -> {target:g}).")
+        return
+
+    pf = load_pf(mkt, reset=args.reset, cash=cash, target=target)
     if args.reset:
         save_pf(mkt, pf)
         save_gate(mkt, {}, 0)
+    elif os.path.exists(mkt["state"]) and (args.cash or args.target):
+        if abs(pf.cash_start - cash) > 1e-9 or abs(pf.target - target) > 1e-9:
+            print(f"Note: keeping existing account {mkt['ccy']}{pf.cash_start:g} -> {mkt['ccy']}{pf.target:g}. Use --reset to restart with new amounts.")
+    ruin = max(config.RUIN, pf.cash_start * 0.01)
 
     broker = None
     if args.live:
@@ -219,7 +238,7 @@ def main():
         print("*** LIVE MODE: real orders, real money. Ledger mirrors fills. ***")
         try:
             broker = get_broker(args.market)
-            print(f"LIVE broker ready for {args.market}. Per-order cap: {live_cap(args.market)}")
+            print(f"LIVE broker ready for {args.market}. Per-order cap: {live_cap(args.market, pf.cash_start)}")
         except LiveRefused as e:
             print(f"LIVE REFUSED, not starting: {e}")
             return
@@ -242,10 +261,10 @@ def main():
             print("Empty step. Sleeping and continuing (never dies overnight).")
             time.sleep(args.sleep)
             continue
-        if total >= mkt["target"]:
-            print(f"\n*** TARGET HIT: {total:.2f} >= {mkt['target']:.0f}. Stopping. ***")
+        if total >= pf.target:
+            print(f"\n*** TARGET HIT: {total:.2f} >= {pf.target:g}. Stopping. ***")
             break
-        if total <= config.RUIN:
+        if total <= ruin:
             print(f"\n*** RUINED: {total:.2f}. Stopping. ***")
             break
         if i < args.max_steps:

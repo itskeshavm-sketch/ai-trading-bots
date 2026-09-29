@@ -1,15 +1,19 @@
 class PaperPortfolio:
-    def __init__(self, cash_start):
+    def __init__(self, cash_start, target=None):
+        self.cash_start = cash_start
+        self.target = target if target else cash_start * 2
         self.cash = cash_start
         self.positions = {}  # symbol -> {qty, avg_price}
         self.trades = []
 
     def to_dict(self):
-        return {"cash": self.cash, "positions": self.positions, "trades": self.trades}
+        return {"cash_start": self.cash_start, "target": self.target,
+                "cash": self.cash, "positions": self.positions, "trades": self.trades}
 
     @classmethod
     def from_dict(cls, d):
-        pf = cls(d.get("cash", 500.0))
+        pf = cls(d.get("cash_start", d.get("cash", 500.0)), d.get("target"))
+        pf.cash = d.get("cash", pf.cash_start)
         pf.positions = d.get("positions", {})
         pf.trades = d.get("trades", [])
         return pf

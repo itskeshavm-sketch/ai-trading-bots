@@ -58,6 +58,16 @@ e.g. `python main.py --ai --loop --sleep 60 --max-steps 1000000 --market meme --
 Then open http://localhost:8000/dashboard2.html — totals, goal rings,
 allocation pies, P&L bars for every bot.
 
+**Starting amount:** each bot defaults to 500 → 1000 (Rs. or USDT). Give it
+more (or less) with `--cash` and `--target` — the AI goal, terminal header,
+dashboard and live order caps all scale automatically:
+```
+python main.py --ai --loop --sleep 0 --max-steps 1000000 --market meme --cash 5000 --target 10000
+```
+Amounts apply on a fresh start and are saved in the state file, so restarts
+keep them. To change amounts on a running account, add `--reset` (wipes it
+back to the new starting cash — old trades are gone, so be sure).
+
 ## How it decides
 
 Each step fetches live prices + RSI/SMA, the AI returns BUY/SELL/HOLD as JSON,
@@ -66,7 +76,8 @@ the loop executes. AI is only woken when a price moved ≥0.05% (else every
 
 ## Live rails (always on with `--live`)
 
-- Per-order caps: Rs.500 (NSE/meme), 10 USDT (crypto) — see `config.py`.
+- Per-order caps: Rs.500 (NSE/meme), 10 USDT (crypto) at default size, scaling
+  to 50% of starting cash for bigger accounts — see `config.py`.
 - NSE: whole shares only; Binance: lot-size + ~5 USDT min-notional enforced.
 - Blocked orders print `LIVE SKIP` and never touch the ledger.
 - Ledger mirrors real fills, so the dashboard works identically in both modes.

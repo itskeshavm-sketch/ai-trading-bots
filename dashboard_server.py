@@ -65,14 +65,16 @@ def get_status(market):
             "last": px, "value": val, "pnl_pct": pnl,
         })
     cash = state.get("cash", cfg["cash_start"])
+    cash_start = state.get("cash_start", cfg["cash_start"])
+    target = state.get("target", cfg["target"])
     total = cash + invested
     trades = state.get("trades", [])
     return {
         "market": market, "label": cfg["label"], "ccy": cfg["ccy"],
-        "cash_start": cfg["cash_start"], "target": cfg["target"],
+        "cash_start": cash_start, "target": target,
         "cash": cash, "invested": invested, "total": total,
-        "goal_pct": (total / cfg["target"] * 100) if cfg["target"] else 0,
-        "pnl_vs_start": total - cfg["cash_start"],
+        "goal_pct": (total / target * 100) if target else 0,
+        "pnl_vs_start": total - cash_start,
         "positions": positions,
         "trades_total": len(trades),
         "recent_trades": trades[-10:][::-1],
