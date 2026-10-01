@@ -25,14 +25,14 @@ pip install -r requirements.txt
 **2. AI key (required for both modes) — [opencode.ai/auth](https://opencode.ai/auth) → Zen → API keys, set a $5 monthly limit, then:**
 ```
 copy .env.example .env
-notepad .env
+python setup_keys.py
 ```
-Replace `sk-your-zen-key-here`, save, close. Check it (prints `key: OK`):
-```
-python -c "from dotenv import load_dotenv; load_dotenv(); from brain import get_client; print('key:', 'OK' if get_client() else 'MISSING')"
-```
+It shows what's already set (masked), typing is hidden, Enter keeps a value,
+`-` clears it, and it verifies the key at the end. (Prefer manual?
+`notepad .env` works too.)
 
-**3. Broker keys (only for live — skip for paper):**
+**3. Broker keys (only for live — skip for paper).** Easiest: `python setup_keys.py`
+covers all of these too. Or paste them into `.env` by hand:
 - *Binance (free):* API key with **spot trading only**, withdrawals off.
   Practice on the free testnet first: testnet keys + keep `BINANCE_TESTNET=1`.
 - *Zerodha:* needs a paid Kite Connect app (~Rs.2000/month — skip unless you
@@ -103,3 +103,4 @@ the loop executes. AI is only woken when a price moved ≥0.05% (else every
 `brokers.py` Kite + Binance routing · `kite_token.py` daily Zerodha token ·
 `data.py` NSE feed · `crypto.py` Binance feed · `paper.py` ledger ·
 `dashboard_server.py` + `dashboard1/2.html` · `test_live.py` (`python test_live.py`)
+`setup_keys.py` guided key setup (typing hidden, values masked)
