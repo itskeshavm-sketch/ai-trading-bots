@@ -6,11 +6,21 @@
 # which AI provider to use. No git needed. Safe to re-run: an existing folder
 # is updated instead of overwritten.
 
+param(
+  [string]$Dir = "",
+  [string]$BaseUrl = "",
+  [string]$ApiKey = "",
+  [string]$Model = "",
+  [switch]$SkipDeps,
+  [switch]$SkipProvider,
+  [switch]$NoVenv
+)
+
 $ErrorActionPreference = "Stop"
 
 $Repo = "itskeshavm-sketch/ai-trading-bots"
 $Zip = "https://codeload.github.com/$Repo/zip/refs/heads/main"
-$Target = if ($env:AI_TRADING_DIR) { $env:AI_TRADING_DIR } else { Join-Path (Get-Location) "ai-trading-bots" }
+$Target = if ($Dir) { $Dir } elseif ($env:AI_TRADING_DIR) { $env:AI_TRADING_DIR } else { Join-Path (Get-Location) "ai-trading-bots" }
 
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "    $msg" -ForegroundColor Green }
@@ -63,7 +73,14 @@ if (-not (Test-Path $setup)) {
 }
 
 Write-Step "Running setup (virtualenv + dependencies + provider wizard)"
-& powershell -NoProfile -ExecutionPolicy Bypass -File $setup
+$setupArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $setup)
+if ($SkipDeps)   { $setupArgs += "-SkipDeps" }
+if ($SkipProvider) { $setupArgs += "-SkipProvider" }
+if ($NoVenv)     { $setupArgs += "-NoVenv" }
+if ($BaseUrl)    { $setupArgs += @("-BaseUrl", $BaseUrl) }
+if ($ApiKey)     { $setupArgs += @("-ApiKey", $ApiKey) }
+if ($Model)      { $setupArgs += @("-Model", $Model) }
+& powershell @setupArgs
 
 Write-Host ""
 Write-Host "Installed at: $Target" -ForegroundColor Green
