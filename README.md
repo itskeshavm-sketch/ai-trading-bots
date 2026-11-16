@@ -65,8 +65,27 @@ Testing gpt-4o-mini ...
   OK   model answered: 'pong'
 ```
 
-Change it any time with `python setup_provider.py`. Check what is set with
-`python setup_provider.py --check`.
+Change it any time — from the project directory:
+
+```
+cd ai-trading-bots
+python setup_provider.py
+```
+
+That rewrites `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` in `.env` and re-tests
+the model. To just look at what is configured:
+
+```
+cd ai-trading-bots
+python setup_provider.py --check
+```
+
+Prefer to edit the file directly? `.env` is plain text:
+
+```
+cd ai-trading-bots
+notepad .env
+```
 
 Ready-made base URLs:
 
@@ -166,7 +185,7 @@ the loop executes. AI is only woken when a price moved ≥0.05% (else every
 `dashboard_server.py` + `dashboard1/2.html` · `test_live.py` (`python test_live.py`)
 
 Setup helpers:
-- `setup_provider.py` — **AI provider wizard**: base URL + key + model list (`--check`, `--list-models`)
+- `setup_provider.py` — **AI provider wizard**: base URL + key + model list (`--check`, `--list-models`). Edit the script itself with `notepad setup_provider.py`
 - `setup.ps1` / `setup.bat` — venv + dependencies + provider wizard
 - `install.ps1` — one-line installer (PowerShell)
 - `setup_keys.py` — broker key setup (hidden typing, masked values)
