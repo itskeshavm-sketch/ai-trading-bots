@@ -1,5 +1,7 @@
 # AI Trading Bots (live + paper)
 
+[![CI](https://github.com/itskeshavm-sketch/ai-trading-bots/actions/workflows/ci.yml/badge.svg)](https://github.com/itskeshavm-sketch/ai-trading-bots/actions/workflows/ci.yml)
+
 An AI trader for **Zerodha (NSE stocks)** and **Binance (crypto + memecoins)** —
 real orders when you arm it, paper trading by default. Bring **any**
 OpenAI-compatible AI provider: OpenAI, OpenRouter, Groq, Together, DeepSeek,

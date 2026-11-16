@@ -121,6 +121,19 @@ results.append(check("provider down -> HOLD everything",
                      out.get("_offline") is True and all(d["action"] == "HOLD" for d in out["decisions"]), str(out)))
 brain.AI_RETRIES = 3
 
+# 9. each retry drops only what the provider actually rejected
+brain.config.AI_REASONING_EFFORT = "max"
+brain.config.AI_JSON_MODE = True
+client = PickyClient(reject={"extra_body", "response_format"})
+resp = brain._chat(client, [{"role": "user", "content": "hi"}], verbose=False)
+shapes = [tuple(c) for c in client.calls]
+results.append(check("no duplicate call shapes", len(shapes) == len(set(shapes)), str(shapes)))
+results.append(check("at most 3 calls needed", len(shapes) <= 3, str(len(shapes))))
+results.append(check("last call carries neither rejected field",
+                     "extra_body" not in shapes[-1] and "response_format" not in shapes[-1], str(shapes[-1])))
+brain.config.AI_JSON_MODE = False
+brain.config.AI_REASONING_EFFORT = ""
+
 print()
 print(f"{sum(results)}/{len(results)} checks passed")
 sys.exit(0 if all(results) else 1)

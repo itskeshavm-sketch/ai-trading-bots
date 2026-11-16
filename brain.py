@@ -89,28 +89,25 @@ def _build_kwargs():
 def _chat(client, messages, verbose=True):
     """Call the provider, degrading gracefully when it rejects optional fields.
 
-    Falls back, in order:
-      max_tokens -> max_completion_tokens   (OpenAI o-series / newer gateways)
-      drop response_format                   (endpoints without JSON mode)
-      drop extra_body/reasoning              (endpoints that reject unknown fields)
+    Every rejection is remembered, so each retry drops only what actually
+    failed - no re-sending combinations the provider already refused.
+
+    Handles providers that need max_completion_tokens instead of max_tokens,
+    that have no JSON mode, or that reject a reasoning field.
     """
-    attempts = [
-        ("standard", {}),
-        ("max_completion_tokens", {"_swap_token_field": True}),
-        ("no_json_mode", {"_drop_json": True}),
-        ("no_reasoning", {"_drop_reasoning": True}),
-    ]
+    blocked = set()
     last_err = None
-    for label, fix in attempts:
+    for attempt in range(6):
         kwargs = _build_kwargs()
         kwargs["messages"] = messages
-        if fix.get("_swap_token_field"):
+        if "extra_body" in blocked:
+            kwargs.pop("extra_body", None)
+        if "response_format" in blocked:
+            kwargs.pop("response_format", None)
+        if "max_tokens" in blocked:
             kwargs.pop("max_tokens", None)
             kwargs["max_completion_tokens"] = config.AI_MAX_TOKENS
-        if fix.get("_drop_json"):
-            kwargs.pop("response_format", None)
-        if fix.get("_drop_reasoning"):
-            kwargs.pop("extra_body", None)
+
         try:
             return client.chat.completions.create(**kwargs)
         except Exception as exc:
@@ -118,11 +115,28 @@ def _chat(client, messages, verbose=True):
             msg = str(exc).lower()
             fatal = ("401" in msg or "unauthorized" in msg or "invalid api key" in msg
                      or "insufficient" in msg or "balance" in msg)
-            if verbose and not fatal:
-                print(f"  ! provider rejected '{label}' call: {str(exc)[:140]}")
-                print("    retrying with fewer optional fields...")
             if fatal:
+                if verbose:
+                    print(f"  ! provider rejected the request: {str(exc)[:150]}")
                 break
+
+            if "max_token" in msg and "max_tokens" not in blocked:
+                blocked.add("max_tokens")
+                dropped = "max_tokens -> max_completion_tokens"
+            elif ("response_format" in msg or "json_object" in msg) and "response_format" not in blocked:
+                blocked.add("response_format")
+                dropped = "response_format"
+            elif ("extra_body" in msg or "reasoning" in msg) and "extra_body" not in blocked:
+                blocked.add("extra_body")
+                dropped = "reasoning/extra_body"
+            else:
+                if verbose:
+                    print(f"  ! provider error: {str(exc)[:150]}")
+                break
+
+            if verbose:
+                print(f"  ! provider rejected the call: {str(exc)[:120]}")
+                print(f"    retrying without {dropped} ...")
     raise last_err
 
 
