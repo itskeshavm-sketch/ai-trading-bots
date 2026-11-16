@@ -10,3 +10,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+dist/
+tests/__pycache__/
+

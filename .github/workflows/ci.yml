@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install openai python-dotenv
+
+      - name: Byte-compile everything
+        run: python -m compileall -q agensi scripts tests . --exclude .venv || true
+
+      - name: AI client fallback tests
+        run: python tests/test_brain_fallbacks.py
+
+      - name: Provider wizard tests
+        run: python tests/test_setup_provider.py
+
+      - name: Agensi skill package tests
+        run: python tests/test_skill_scripts.py
+
+      - name: Provider wizard smoke test (no keys)
+        run: |
+          python setup_provider.py --check
+          python setup_provider.py --help

@@ -4,11 +4,35 @@ import config
 
 AI_RETRIES = 3
 
+
 def get_client():
-    key = os.getenv("OPENCODE_API_KEY", "")
-    if not key or "your-zen" in key:
+    """OpenAI-compatible client for whatever provider the user configured.
+
+    Works with OpenAI, OpenRouter, Groq, Together, DeepSeek, Mistral, xAI,
+    Cerebras, NVIDIA NIM, LM Studio, Ollama, vLLM, Gemini's compat layer,
+    OpenCode Zen, or any gateway that speaks /v1/chat/completions.
+    """
+    key = config.AI_API_KEY
+    if not key or "your-" in key or "your_" in key:
         return None
-    return OpenAI(base_url=config.ZEN_BASE_URL, api_key=key)
+    try:
+        return OpenAI(
+            base_url=config.AI_BASE_URL,
+            api_key=key,
+            timeout=config.AI_TIMEOUT,
+            max_retries=0,  # we do our own retries with clearer messages
+        )
+    except Exception as exc:  # bad base url etc.
+        print(f"  ! Could not build AI client: {str(exc)[:200]}")
+        return None
+
+
+def provider_label():
+    """Human readable 'provider/model' for logs."""
+    base = (config.AI_BASE_URL or "").rstrip("/")
+    host = base.split("/v")[0].split("//")[-1]
+    return f"{host}/{config.AI_MODEL}"
+
 
 PROMPT_NSE = """GOAL: Grow a real {CCY}{CASH} NSE trading account to {CCY}{TARGET} as fast as possible.
 You are trading REAL money on the NSE. Every BUY/SELL you output executes as a live market order with real rupees. Losses are real and permanent. There is no reset, no practice mode.
@@ -24,6 +48,14 @@ Given live snapshots + your real portfolio, output ONLY JSON: {"decisions":[{"sy
 Rules: max 50% per position, RSI>75 avoid chase, RSI<35 + price>SMA20 = strong buy, sell fast on -4% stop or +8% take or RSI>75. Fractional amounts allowed. Amounts are in USDT. Keep reason <15 words.
 """
 
+PROMPT_MEME = """GOAL: Grow a real {CCY}{CASH} memecoin trading account to {CCY}{TARGET} as fast as possible.
+You are trading REAL money on crypto spot (DOGE, SHIB, PEPE). Every BUY/SELL you output executes as a live market order with real rupees. Losses are real and permanent. There is no reset, no practice mode. Market runs 24/7, memecoins are extremely volatile and can crash 30% in an hour.
+You are an aggressive but disciplined trader. Prefer high-momentum setups, buy breakouts/oversold bounces, concentrate when confident.
+Given live snapshots (prices in rupees) + your real portfolio, output ONLY JSON: {"decisions":[{"symbol":..., "action":"BUY|SELL|HOLD","amount":0,"reason":"..."}]}
+Rules: max 50% per position, RSI>75 avoid chase, RSI<35 + price>SMA20 = strong buy, sell fast on -4% stop or +8% take or RSI>75. Fractional amounts allowed. Amounts are in rupees. Keep reason <15 words.
+"""
+
+
 def get_prompt(market, ccy="Rs.", cash=500, target=1000):
     if market == "crypto":
         p = PROMPT_CRYPTO
@@ -34,61 +66,120 @@ def get_prompt(market, ccy="Rs.", cash=500, target=1000):
     amt = lambda v: f"{v:g}"
     return p.replace("{CCY}", ccy).replace("{CASH}", amt(cash)).replace("{TARGET}", amt(target))
 
-PROMPT_MEME = """GOAL: Grow a real {CCY}{CASH} memecoin trading account to {CCY}{TARGET} as fast as possible.
-You are trading REAL money on crypto spot (DOGE, SHIB, PEPE). Every BUY/SELL you output executes as a live market order with real rupees. Losses are real and permanent. There is no reset, no practice mode. Market runs 24/7, memecoins are extremely volatile and can crash 30% in an hour.
-You are an aggressive but disciplined trader. Prefer high-momentum setups, buy breakouts/oversold bounces, concentrate when confident.
-Given live snapshots (prices in rupees) + your real portfolio, output ONLY JSON: {"decisions":[{"symbol":..., "action":"BUY|SELL|HOLD","amount":0,"reason":"..."}]}
-Rules: max 50% per position, RSI>75 avoid chase, RSI<35 + price>SMA20 = strong buy, sell fast on -4% stop or +8% take or RSI>75. Fractional amounts allowed. Amounts are in rupees. Keep reason <15 words.
-"""
 
 PROMPT = PROMPT_NSE  # default
 
+
+def _build_kwargs():
+    """Base kwargs for a chat completion, before provider-specific fixes."""
+    kwargs = {
+        "model": config.AI_MODEL,
+        "messages": [],
+        "max_tokens": config.AI_MAX_TOKENS,
+    }
+    if config.AI_REASONING_EFFORT:
+        # Only sent when the user explicitly asked for it. Many OpenAI-compatible
+        # endpoints reject unknown body fields, so this stays opt-in.
+        kwargs["extra_body"] = {"reasoning": {"effort": config.AI_REASONING_EFFORT}}
+    if config.AI_JSON_MODE:
+        kwargs["response_format"] = {"type": "json_object"}
+    return kwargs
+
+
+def _chat(client, messages, verbose=True):
+    """Call the provider, degrading gracefully when it rejects optional fields.
+
+    Falls back, in order:
+      max_tokens -> max_completion_tokens   (OpenAI o-series / newer gateways)
+      drop response_format                   (endpoints without JSON mode)
+      drop extra_body/reasoning              (endpoints that reject unknown fields)
+    """
+    attempts = [
+        ("standard", {}),
+        ("max_completion_tokens", {"_swap_token_field": True}),
+        ("no_json_mode", {"_drop_json": True}),
+        ("no_reasoning", {"_drop_reasoning": True}),
+    ]
+    last_err = None
+    for label, fix in attempts:
+        kwargs = _build_kwargs()
+        kwargs["messages"] = messages
+        if fix.get("_swap_token_field"):
+            kwargs.pop("max_tokens", None)
+            kwargs["max_completion_tokens"] = config.AI_MAX_TOKENS
+        if fix.get("_drop_json"):
+            kwargs.pop("response_format", None)
+        if fix.get("_drop_reasoning"):
+            kwargs.pop("extra_body", None)
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            last_err = exc
+            msg = str(exc).lower()
+            fatal = ("401" in msg or "unauthorized" in msg or "invalid api key" in msg
+                     or "insufficient" in msg or "balance" in msg)
+            if verbose and not fatal:
+                print(f"  ! provider rejected '{label}' call: {str(exc)[:140]}")
+                print("    retrying with fewer optional fields...")
+            if fatal:
+                break
+    raise last_err
+
+
 def ai_decide(client, snapshots, portfolio_text, verbose=True, market="nse",
               ccy="Rs.", cash_start=500, target=1000):
-    # space-bunny-free works via Zen API with $0 balance.
-    # Reasoning = your Max dropdown -> extra_body={"reasoning":{"effort":"max"}}
-    # Needs large max_tokens because thinking consumes tokens.
     prompt = get_prompt(market, ccy, cash_start, target)
-    print(f"[STEP 3/5] Sending to {config.ZEN_MODEL} reasoning={config.ZEN_REASONING_EFFORT} ...")
+    if verbose:
+        effort = config.AI_REASONING_EFFORT or "none"
+        print(f"[STEP 3/5] Asking {provider_label()} (reasoning={effort}) ...")
+    messages = [{"role": "user",
+                 "content": prompt + f"\nSnapshots:\n{json.dumps(snapshots, indent=2)}\nPortfolio:\n{portfolio_text}"}]
+
     last_err = None
     for attempt in range(AI_RETRIES):
         try:
-            resp = client.chat.completions.create(
-                model=config.ZEN_MODEL,
-                messages=[{"role": "user", "content": prompt + f"\nSnapshots:\n{json.dumps(snapshots, indent=2)}\nPortfolio:\n{portfolio_text}"}],
-                max_tokens=16000,
-                extra_body={"reasoning": {"effort": config.ZEN_REASONING_EFFORT}},
-            )
+            resp = _chat(client, messages, verbose=verbose)
             break
         except Exception as e:
             last_err = e
-            print(f"  ! Zen call failed (try {attempt+1}/{AI_RETRIES}): {str(e)[:150]}")
+            print(f"  ! AI call failed (try {attempt+1}/{AI_RETRIES}): {str(e)[:200]}")
             time.sleep(5 * (attempt + 1))
     else:
-        # network/Zen down (e.g. PC slept, DNS fail): HOLD everything, never crash
-        print("  ! Zen unreachable after retries. Holding all positions this step.")
+        # Provider down (PC slept, DNS fail, bad key): HOLD everything, never crash
+        print("  ! AI unreachable after retries. Holding all positions this step.")
         return {"decisions": [
             {"symbol": s["symbol"], "action": "HOLD", "rupees": 0, "reason": "ai offline, hold"}
             for s in snapshots
         ], "_reasoning": "", "_raw": "", "_offline": True}
+
     msg = resp.choices[0].message
     txt = (msg.content or "").strip()
-    reasoning = getattr(msg, "reasoning_content", "") or ""
-    def safe(t): return (t or "").replace("\u20b9", "Rs.").encode("cp1252", "replace").decode("cp1252")
+    reasoning = getattr(msg, "reasoning_content", "") or getattr(msg, "reasoning", "") or ""
+
+    def safe(t):
+        return (t or "").replace("\u20b9", "Rs.").encode("cp1252", "replace").decode("cp1252")
+
     if verbose:
-        print(f"\n--- AI THINKING ({config.ZEN_MODEL} @ {config.ZEN_REASONING_EFFORT}) ---")
+        print(f"\n--- AI THINKING ({provider_label()}) ---")
         print(safe(reasoning) if reasoning else "(no reasoning returned)")
         print("--- END THINKING ---\n")
         print(f"[STEP 4/5] Raw answer: {safe(txt)[:1000]}")
-    # strip code fences
+
     if txt.startswith("```"):
         txt = txt.strip("`").replace("json", "", 1).strip()
     start = txt.find("{")
     end = txt.rfind("}") + 1
-    out = json.loads(txt[start:end])
+    try:
+        out = json.loads(txt[start:end])
+    except Exception as exc:
+        print(f"  ! Model did not return parsable JSON ({str(exc)[:120]}). Falling back to rules.")
+        fallback = rule_decide(snapshots, None, None)
+        fallback["_raw"] = txt
+        return fallback
     out["_reasoning"] = reasoning
     out["_raw"] = txt
     return out
+
 
 def rule_decide(snapshots, portfolio, prices):
     """Fallback, no key needed. Simple RSI+SMA rule."""
@@ -98,7 +189,7 @@ def rule_decide(snapshots, portfolio, prices):
         price = s["price"]
         rsi = s.get("rsi14") or 50
         sma20 = s.get("sma20") or price
-        pos = portfolio.positions.get(s["symbol"])
+        pos = (portfolio.positions.get(s["symbol"]) if portfolio else None)
         if rsi < 35 and price > sma20 and not pos:
             decisions.append({"symbol": s["symbol"], "action": "BUY", "rupees": stake, "reason": "oversold bounce"})
         elif pos:

@@ -140,9 +140,9 @@ def one_step(mkt, market, pf, use_ai, interval, period, step_no, broker=None):
     if use_ai:
         client = get_client()
         if not client:
-            print("No OPENCODE_API_KEY in .env.")
+            print("No AI provider configured. Run:  python setup_provider.py")
             return None
-        print(f"[STEP 3/5] Asking {config.ZEN_MODEL} (reasoning={config.ZEN_REASONING_EFFORT}) ...")
+        print(f"[STEP 3/5] Asking {config.AI_MODEL} via {config.AI_BASE_URL} ...")
         out = ai_decide(client, snapshots, pf_text, verbose=True, market=market,
                         ccy=ccy, cash_start=pf.cash_start, target=pf.target)
         print(f"[STEP 4/5] AI decisions: {out['decisions']}")

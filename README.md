@@ -1,7 +1,11 @@
 # AI Trading Bots (live + paper)
 
-AI (OpenCode Zen) trades for you — **real orders** on Zerodha (NSE stocks) and
-Binance (crypto + memecoins) when you add your keys and pass `--live`.
+An AI trader for **Zerodha (NSE stocks)** and **Binance (crypto + memecoins)** —
+real orders when you arm it, paper trading by default. Bring **any**
+OpenAI-compatible AI provider: OpenAI, OpenRouter, Groq, Together, DeepSeek,
+Mistral, xAI, Cerebras, NVIDIA NIM, Ollama, LM Studio, OpenCode Zen, or your own
+gateway. You pick the model.
+
 **No keys set up? It just paper-trades** a virtual Rs.500 instead. Nothing
 real happens unless you explicitly arm it.
 
@@ -15,24 +19,78 @@ real happens unless you explicitly arm it.
 | Crypto | Binance spot (BTC/ETH/SOL) | BTCUSDT, ETHUSDT, SOLUSDT | `portfolio_crypto.json` |
 | Memecoins | Binance spot, tracked in Rs. | DOGE, SHIB, PEPE | `portfolio_meme.json` |
 
-## Setup — everything in CMD, ~5 minutes
+## Install — one line
 
-**1. Install:**
-```
-pip install -r requirements.txt
+**PowerShell (no git needed):**
+```powershell
+irm https://raw.githubusercontent.com/itskeshavm-sketch/ai-trading-bots/main/install.ps1 | iex
 ```
 
-**2. AI key (required for both modes) — [opencode.ai/auth](https://opencode.ai/auth) → Zen → API keys, set a $5 monthly limit, then:**
+**CMD:**
 ```
-copy .env.example .env
-python setup_keys.py
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
 ```
-It shows what's already set (masked), typing is hidden, Enter keeps a value,
-`-` clears it, and it verifies the key at the end. (Prefer manual?
-`notepad .env` works too.)
 
-**3. Broker keys (only for live — skip for paper).** Easiest: `python setup_keys.py`
-covers all of these too. Or paste them into `.env` by hand:
+**Already cloned it?**
+```
+cd ai-trading-bots
+setup.bat                      REM or: powershell -ExecutionPolicy Bypass -File setup.ps1
+```
+
+The installer creates a virtualenv, installs the dependencies, then asks which
+AI provider you want. Nothing else to do.
+
+## Pick your AI provider
+
+The setup wizard asks three things and writes them to `.env`:
+
+1. **Base URL** — the provider's OpenAI-compatible endpoint
+2. **API key** — typed hidden, never printed
+3. **Model** — it fetches that provider's model list and shows it; pick by
+   number or type an id
+
+```
+Base URL [https://api.openai.com/v1]:
+API key (hidden):
+Fetching model list from https://api.openai.com/v1/models ...
+OK - 87 model(s) available.
+Filter by text (Enter = show all):
+  [  1] gpt-4o
+  [  2] gpt-4o-mini
+  ...
+Pick a model (number, or type the model id): 2
+Testing gpt-4o-mini ...
+  OK   model answered: 'pong'
+```
+
+Change it any time with `python setup_provider.py`. Check what is set with
+`python setup_provider.py --check`.
+
+Ready-made base URLs:
+
+| Provider | Base URL |
+|---|---|
+| OpenAI | `https://api.openai.com/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| Groq | `https://api.groq.com/openai/v1` |
+| Together | `https://api.together.xyz/v1` |
+| DeepSeek | `https://api.deepseek.com/v1` |
+| Mistral | `https://api.mistral.ai/v1` |
+| xAI | `https://api.x.ai/v1` |
+| Cerebras | `https://api.cerebras.ai/v1` |
+| NVIDIA NIM | `https://integrate.api.nvidia.com/v1` |
+| Ollama (local) | `http://localhost:11434/v1` |
+| LM Studio (local) | `http://localhost:1234/v1` |
+| OpenCode Zen | `https://opencode.ai/zen/v1` |
+
+Providers that reject `reasoning` or `response_format` are handled
+automatically — the bot retries with fewer optional fields and tells you what
+it dropped.
+
+## Broker keys (only for live — skip for paper)
+
+`python setup_keys.py` covers every broker key with hidden typing and masked
+display. Or paste them into `.env` by hand:
 - *Binance (free):* API key with **spot trading only**, withdrawals off.
   Practice on the free testnet first: testnet keys + keep `BINANCE_TESTNET=1`.
 - *Zerodha:* needs a paid Kite Connect app (~Rs.2000/month — skip unless you
@@ -46,6 +104,7 @@ covers all of these too. Or paste them into `.env` by hand:
 **4. Run — paste the whole block (change the `cd` line to your folder):**
 ```
 cd C:\Users\Dell\Downloads\stocks
+call .venv\Scripts\activate.bat
 start "nse bot" python main.py --ai --loop --sleep 0 --max-steps 1000000 --market nse
 start "crypto bot" python main.py --ai --loop --sleep 0 --max-steps 1000000 --market crypto
 start "meme bot" python main.py --ai --loop --sleep 0 --max-steps 1000000 --market meme
@@ -99,8 +158,14 @@ the loop executes. AI is only woken when a price moved ≥0.05% (else every
 
 ## Files
 
-`main.py` loop (`--live` for real orders) · `brain.py` Zen client ·
-`brokers.py` Kite + Binance routing · `kite_token.py` daily Zerodha token ·
+`main.py` loop (`--live` for real orders) · `brain.py` provider-agnostic AI client ·
+`config.py` settings · `brokers.py` Kite + Binance routing · `kite_token.py` daily Zerodha token ·
 `data.py` NSE feed · `crypto.py` Binance feed · `paper.py` ledger ·
 `dashboard_server.py` + `dashboard1/2.html` · `test_live.py` (`python test_live.py`)
-`setup_keys.py` guided key setup (typing hidden, values masked)
+
+Setup helpers:
+- `setup_provider.py` — **AI provider wizard**: base URL + key + model list (`--check`, `--list-models`)
+- `setup.ps1` / `setup.bat` — venv + dependencies + provider wizard
+- `install.ps1` — one-line installer (PowerShell)
+- `setup_keys.py` — broker key setup (hidden typing, masked values)
+- `envfile.py` — tiny `.env` reader/writer
