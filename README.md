@@ -191,28 +191,11 @@ Setup helpers:
 - `setup_keys.py` — broker key setup (hidden typing, masked values)
 - `envfile.py` — tiny `.env` reader/writer
 
-## Free skill package for AI agents
-
-`agensi/paper-trading-desk/` is a **SKILL.md** package: screener, backtester
-with drawdown, and a paper-portfolio ledger — pure Python standard library, no
-dependencies. Drop it into Claude Code, Cursor, Codex or any SKILL.md marketplace.
-
-```
-agensi/paper-trading-desk/
-  SKILL.md
-  scripts/    screen.py · run_backtest.py · paper_portfolio.py · ai_decide.py · setup_provider.py
-  references/ strategy.md · market-data.md · worked-example.md
-```
-
-Download the zip from the [releases page](https://github.com/itskeshavm-sketch/ai-trading-bots/releases),
-or rebuild it with `python tools/build_skill_package.py`.
-
 ## Development
 
 ```
 python tests/test_brain_fallbacks.py    # provider fallback behaviour
 python tests/test_setup_provider.py     # the provider wizard, against a fake server
-python tests/test_skill_scripts.py      # the skill package scripts
 ```
 
-CI runs all three on Ubuntu, Windows and macOS across Python 3.11 and 3.12.
+CI runs both on Ubuntu, Windows and macOS across Python 3.11 and 3.12.

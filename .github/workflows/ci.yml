@@ -28,16 +28,13 @@ jobs:
           python -m pip install openai python-dotenv
 
       - name: Byte-compile everything
-        run: python -m compileall -q agensi scripts tests . --exclude .venv || true
+        run: python -m compileall -q . --exclude .venv || true
 
       - name: AI client fallback tests
         run: python tests/test_brain_fallbacks.py
 
       - name: Provider wizard tests
         run: python tests/test_setup_provider.py
-
-      - name: Agensi skill package tests
-        run: python tests/test_skill_scripts.py
 
       - name: Provider wizard smoke test (no keys)
         run: |
